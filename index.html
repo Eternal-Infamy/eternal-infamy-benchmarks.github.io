@@ -9,11 +9,11 @@
 <style>
 /* ─── Footer ─────────────────────────────────────── */
 footer {
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--border-soft);
   text-align: center;
   padding: 1.25rem 1.5rem;
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--text-faint);
 }
 
 :root{
@@ -319,23 +319,6 @@ tbody tr:hover{background:var(--panel2);}
 .details > summary::-webkit-details-marker{display:none;}
 .details[open] > summary{border-bottom:1px solid var(--border-soft);}
 .modal-backdrop{position:fixed;inset:0;background:rgba(6,7,9,0.7);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;}
-.auth-shell{
-  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
-  background:radial-gradient(1200px 800px at 15% -10%, #151a22 0%, var(--bg) 55%);
-}
-.auth-card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;padding:28px 26px;}
-.auth-card .brand-mark{margin-bottom:14px;}
-.auth-card h1{font-size:19px;margin-bottom:6px;}
-.auth-card p.sub{color:var(--text-dim);font-size:13px;margin-bottom:20px;line-height:1.5;}
-.auth-card .field{margin-bottom:14px;}
-.auth-error{color:var(--danger);font-size:12.5px;margin-top:-6px;margin-bottom:14px;}
-.auth-note{font-size:11.5px;color:var(--text-faint);margin-top:16px;line-height:1.5;}
-.role-badge{
-  display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:10.5px;font-weight:600;
-  text-transform:uppercase;letter-spacing:0.05em;border:1px solid;
-}
-.role-badge-officer{color:var(--accent);border-color:var(--accent-dim);background:rgba(217,164,65,0.08);}
-.role-badge-viewer{color:var(--text-dim);border-color:var(--border);background:var(--panel2);}
 .modal{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:22px;max-width:420px;width:100%;}
 .modal h3{margin-bottom:10px;}
 .modal p{color:var(--text-dim);font-size:13px;margin-bottom:18px;}
@@ -345,6 +328,12 @@ tbody tr:hover{background:var(--panel2);}
 <body>
 <div id="app"></div>
 <div class="toast-wrap" id="toastWrap"></div>
+
+<footer>
+  &copy; <span id="yr"></span>
+  <!-- footer site name -->
+  Eternal Infamy [Fate] Kiz
+</footer>
 
 <script>
 'use strict';
@@ -551,117 +540,6 @@ async function ensureBenchmarks(){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
-
-/* =========================================================================
-   AUTH  (soft access gate — see boot-sequence notes: no backend exists to
-   validate credentials securely, so this deters casual access and separates
-   viewer vs officer capability, but is not resistant to a determined user
-   with browser devtools. Passphrases are never stored in plaintext.)
-   ========================================================================= */
-
-async function sha256Hex(text){
-  const data = new TextEncoder().encode(text + '::skirmish-report');
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(digest)).map(b=> b.toString(16).padStart(2,'0')).join('');
-}
-
-let currentRole = null; // 'officer' | 'viewer' | null
-function isOfficer(){ return currentRole === 'officer'; }
-
-async function getAuthConfig(){
-  return await storeGet('auth-config'); // shared: {viewerHash, officerHash, setupComplete}
-}
-async function getAuthSession(){
-  return await storeGet('auth-session', false); // personal to this browser
-}
-async function setAuthSession(role){
-  await storeSet('auth-session', {role, at: Date.now()}, false);
-}
-async function clearAuthSession(){
-  await storeDelete('auth-session', false);
-}
-
-function authShell(inner){
-  return `<div class="auth-shell"><div class="auth-card">
-    <div class="brand-mark" style="width:36px;height:36px;font-size:16px;">SR</div>
-    ${inner}
-  </div></div>`;
-}
-
-function renderAuthSetup(){
-  document.getElementById('app').innerHTML = authShell(`
-    <h1>Set up access</h1>
-    <p class="sub">No access passphrases exist yet for this board. Choose one for viewers (read-only) and one for officers (upload, edit, delete). You'll be logged in as an officer once this is saved.</p>
-    <div class="field"><label>Viewer passphrase</label><input type="password" id="setupViewer" autocomplete="new-password"></div>
-    <div class="field"><label>Officer passphrase</label><input type="password" id="setupOfficer" autocomplete="new-password"></div>
-    <div id="setupError" class="auth-error" style="display:none;"></div>
-    <button class="btn btn-primary" id="setupSubmit" style="width:100%;justify-content:center;">Save & continue as officer</button>
-    <p class="auth-note">These are stored as one-way hashes, not plaintext — but this is a static page with no server, so treat this as a light deterrent, not real security. Anyone with strong technical access to this file can bypass it.</p>
-  `);
-  document.getElementById('setupSubmit').addEventListener('click', async ()=>{
-    const v = document.getElementById('setupViewer').value;
-    const o = document.getElementById('setupOfficer').value;
-    const errEl = document.getElementById('setupError');
-    if(!v || !o){ errEl.textContent = 'Both passphrases are required.'; errEl.style.display='block'; return; }
-    if(v === o){ errEl.textContent = 'Use two different passphrases.'; errEl.style.display='block'; return; }
-    const viewerHash = await sha256Hex(v);
-    const officerHash = await sha256Hex(o);
-    await storeSet('auth-config', {viewerHash, officerHash, setupComplete:true});
-    await setAuthSession('officer');
-    currentRole = 'officer';
-    render();
-  });
-}
-
-function renderAuthLogin(){
-  document.getElementById('app').innerHTML = authShell(`
-    <h1>Skirmish Report</h1>
-    <p class="sub">Enter the viewer or officer passphrase to continue.</p>
-    <div class="field"><label>Passphrase</label><input type="password" id="loginPass" autocomplete="current-password"></div>
-    <div id="loginError" class="auth-error" style="display:none;"></div>
-    <button class="btn btn-primary" id="loginSubmit" style="width:100%;justify-content:center;">Log in</button>
-  `);
-  const submit = async ()=>{
-    const pass = document.getElementById('loginPass').value;
-    const errEl = document.getElementById('loginError');
-    if(!pass){ errEl.textContent = 'Enter a passphrase.'; errEl.style.display='block'; return; }
-    const config = await getAuthConfig();
-    const hash = await sha256Hex(pass);
-    let role = null;
-    if(hash === config.officerHash) role = 'officer';
-    else if(hash === config.viewerHash) role = 'viewer';
-    if(!role){ errEl.textContent = 'Incorrect passphrase.'; errEl.style.display='block'; return; }
-    await setAuthSession(role);
-    currentRole = role;
-    render();
-  };
-  document.getElementById('loginSubmit').addEventListener('click', submit);
-  document.getElementById('loginPass').addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
-  document.getElementById('loginPass').focus();
-}
-
-// Returns true if the app should proceed to render(); false if a setup/login
-// screen was shown instead (render() must not be called in that case).
-async function ensureAuthenticated(){
-  const config = await getAuthConfig();
-  if(!config || !config.setupComplete){
-    renderAuthSetup();
-    return false;
-  }
-  const session = await getAuthSession();
-  if(session && (session.role==='officer' || session.role==='viewer')){
-    currentRole = session.role;
-    return true;
-  }
-  renderAuthLogin();
-  return false;
-}
-
-async function logOut(){
-  await clearAuthSession();
-  currentRole = null;
-  render();
-}
 
 // Global, persisted espec chip order + hide list — shared across every raid night so a
 // comp's tab order only needs setting up once (see the "Edit classes" control on the
@@ -1166,23 +1044,16 @@ function navHtml(){
     </div>
     <div class="nav">
       ${item('raids','Raid Nights','#/raids')}
-      ${isOfficer() ? item('upload','Upload Logs','#/upload') : ''}
+      ${item('upload','Upload Logs','#/upload')}
       ${item('benchmarks','Benchmarks','#/benchmarks')}
     </div>
     <div class="topbar-actions">
-      <span class="role-badge ${isOfficer()?'role-badge-officer':'role-badge-viewer'}">${isOfficer()?'Officer':'Viewer'}</span>
-      ${isOfficer() ? `<a class="btn btn-primary" href="#/upload">+ Upload Logs</a>` : ''}
-      ${isOfficer() ? `<button class="btn btn-sm btn-ghost" id="manageAccessBtn" title="Change passphrases">⚙</button>` : ''}
-      <button class="btn btn-sm btn-ghost" id="logoutBtn">Log out</button>
+      <a class="btn btn-primary" href="#/upload">+ Upload Logs</a>
     </div>
   </div></div>`;
 }
 
 async function render(){
-  if(!currentRole){
-    const ok = await ensureAuthenticated();
-    if(!ok) return;
-  }
   const app = document.getElementById('app');
   app.innerHTML = navHtml() + `<div class="page" id="pageBody"><div class="loading-wrap"><span class="spinner"></span> Loading…</div></div>`;
   const body = document.getElementById('pageBody');
@@ -1259,9 +1130,6 @@ function slugify(s){
 }
 
 async function renderUploadPage(){
-  if(!isOfficer()){
-    return `<div class="empty-state"><h3>Officers only</h3><p>Uploading logs requires an officer login. Ask an officer for the officer passphrase if you need access.</p><a class="btn" href="#/raids">← Back to raid nights</a></div>`;
-  }
   const fileApiOk = typeof window.showDirectoryPicker !== 'undefined' || 'webkitdirectory' in document.createElement('input');
   return `
   <div class="page-head">
@@ -1354,7 +1222,6 @@ function top5DpsAverage(fight){
 }
 
 async function handleFiles(items){
-  if(!isOfficer()) return;
   if(!items.length) return;
   if(state.uploadBusy){ toast('Still processing the previous batch — please wait.', true); return; }
   state.uploadBusy = true;
@@ -1512,17 +1379,14 @@ async function renderRaidPage(id){
     <div>
       <div class="eyebrow"><a href="#/raids" style="color:var(--text-faint)">← Raid Nights</a></div>
       <h1 class="page-title">
-        ${isOfficer()
-          ? `<input class="inline-edit" id="raidNameInput" value="${escAttr(raid.name)}" style="font-size:24px;font-weight:700;font-family:Sora;width:min(560px,80vw)">`
-          : `<span style="font-size:24px;font-weight:700;font-family:Sora;">${esc(raid.name)}</span>`}
+        <input class="inline-edit" id="raidNameInput" value="${escAttr(raid.name)}" style="font-size:24px;font-weight:700;font-family:Sora;width:min(560px,80vw)">
       </h1>
       <p class="page-desc">${raid.dateStr ? fmtDate(raid.dateStr) : 'Date unknown'} · ${raid.fights.length} fights · ${fmtDuration(totalDuration)} total · ${totalPlayers} players</p>
     </div>
-    ${isOfficer() ? `
     <div style="display:flex;gap:8px;">
       <button class="btn btn-sm" id="toggleExcludeBtn">${raid.excluded ? 'Un-exclude' : 'Exclude from grading'}</button>
       <button class="btn btn-sm btn-danger" id="deleteRaidBtn">Delete raid</button>
-    </div>` : (raid.excluded ? `<span class="tag tag-excluded">excluded</span>` : '')}
+    </div>
   </div>
 
   <details class="details">
@@ -1545,7 +1409,7 @@ function renderEspecChips(){
   const { especsPresent, extraEspecs, activeEspec, especDisplay, chipEditMode } = raidPageCache;
   const hiddenCount = especDisplay.hidden.length;
   const all = especsPresent.concat(extraEspecs.filter(e=>!especsPresent.includes(e)));
-  const editable = chipEditMode && isOfficer();
+  const editable = chipEditMode;
   const chips = all.map(e=>{
     const isExtra = extraEspecs.includes(e) && !especsPresent.includes(e);
     const posInPresent = especsPresent.indexOf(e);
@@ -1574,8 +1438,8 @@ function renderEspecChips(){
     .map(e=>`<option value="${escAttr(e)}">${esc(e)}</option>`).join('');
   return `<div class="chip-row">${chips}
     <div class="chip-add"><select id="addEspecSelect"><option value="">+ Add specialization…</option>${addOptions}</select></div>
-    ${isOfficer() ? `<button class="btn btn-sm btn-ghost" id="toggleChipEditBtn">${chipEditMode ? 'Done' : 'Edit classes'}</button>` : ''}
-    ${(isOfficer() && hiddenCount) ? `<button class="btn btn-sm btn-ghost" id="manageHiddenBtn">${hiddenCount} hidden — manage</button>` : ''}
+    <button class="btn btn-sm btn-ghost" id="toggleChipEditBtn">${chipEditMode ? 'Done' : 'Edit classes'}</button>
+    ${hiddenCount ? `<button class="btn btn-sm btn-ghost" id="manageHiddenBtn">${hiddenCount} hidden — manage</button>` : ''}
   </div>`;
 }
 
@@ -1623,10 +1487,9 @@ function renderEspecGradeTable(){
   if(!activeEspec) return `<p class="small-muted">No players detected yet — upload fights first.</p>`;
   const bench = benchmarks[activeEspec] || { activeVariant:'default', variants:{default:defaultVariant([])} };
   const variantNames = Object.keys(bench.variants);
-  // Viewing a variant is a local, ephemeral display choice — anyone can switch tabs to
-  // preview grades under a different variant without writing to shared storage. Only the
-  // *default* variant (the dot) is persisted, and only officers can change it, from the
-  // Benchmarks page.
+  // Viewing a variant is a local, ephemeral display choice — switching tabs here previews
+  // grades under a different variant without writing to shared storage. Only the
+  // *default* variant (the dot) is persisted, changed from the Benchmarks page.
   const viewOverride = viewingVariant[activeEspec];
   const activeVariant = (viewOverride && bench.variants[viewOverride]) ? viewOverride
     : (bench.variants[bench.activeVariant] ? bench.activeVariant : variantNames[0]);
@@ -1753,9 +1616,9 @@ function wireRaidPage(){
 function wireEspecGradeTable(){
   document.querySelectorAll('[data-act="select-variant"]').forEach(el=>{
     el.addEventListener('click', ()=>{
-      // Viewing a variant is local-only and available to everyone — it does not touch
-      // shared storage. Setting the persisted default variant is an officer-only action
-      // done from the Benchmarks page ("Set as default").
+      // Viewing a variant here is local-only and does not touch shared storage.
+      // Setting the persisted default variant is a separate action, done from the
+      // Benchmarks page ("Set as default").
       const espec = raidPageCache.activeEspec;
       raidPageCache.viewingVariant[espec] = el.getAttribute('data-variant');
       document.getElementById('especGradeTable').innerHTML = renderEspecGradeTable();
@@ -1810,7 +1673,7 @@ function wireChipRow(){
   document.querySelectorAll('[data-act="move-espec-left"]').forEach(el=>{
     el.addEventListener('click', async (e)=>{
       e.stopPropagation();
-      if(!isOfficer() || el.classList.contains('disabled')) return;
+      if(el.classList.contains('disabled')) return;
       const espec = el.getAttribute('data-espec');
       const { especsPresent, especDisplay } = raidPageCache;
       const idx = especsPresent.indexOf(espec);
@@ -1826,7 +1689,7 @@ function wireChipRow(){
   document.querySelectorAll('[data-act="move-espec-right"]').forEach(el=>{
     el.addEventListener('click', async (e)=>{
       e.stopPropagation();
-      if(!isOfficer() || el.classList.contains('disabled')) return;
+      if(el.classList.contains('disabled')) return;
       const espec = el.getAttribute('data-espec');
       const { especsPresent, especDisplay } = raidPageCache;
       const idx = especsPresent.indexOf(espec);
@@ -1841,7 +1704,6 @@ function wireChipRow(){
   document.querySelectorAll('[data-act="hide-espec"]').forEach(el=>{
     el.addEventListener('click', async (e)=>{
       e.stopPropagation();
-      if(!isOfficer()) return;
       const espec = el.getAttribute('data-espec');
       const { especsPresent, especDisplay } = raidPageCache;
       if(!especDisplay.hidden.includes(espec)) especDisplay.hidden.push(espec);
@@ -1878,7 +1740,6 @@ function swapEspecOrder(orderArr, a, b){
 }
 
 function openManageHiddenModal(){
-  if(!isOfficer()) return;
   const especDisplay = raidPageCache.especDisplay;
   const wrap = document.createElement('div');
   wrap.className = 'modal-backdrop';
@@ -1974,7 +1835,6 @@ function renderBenchmarkMain(){
   const bench = benchmarks[espec];
   const variantNames = Object.keys(bench.variants);
   const variant = bench.variants[benchPageCache.variant];
-  const officer = isOfficer();
 
   const variantTabs = variantNames.map(v=>`
     <span class="variant-tab ${v===benchPageCache.variant?'active':''}" data-act="pick-variant" data-variant="${escAttr(v)}">
@@ -1986,21 +1846,21 @@ function renderBenchmarkMain(){
   return `
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
     <h2 style="font-size:19px;">${esc(espec)}</h2>
-    ${officer ? `<div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;">
       ${espec!==GENERAL_KEY ? `<button class="btn btn-sm" id="setDefaultVariantBtn" ${bench.activeVariant===benchPageCache.variant?'disabled':''}>Set as default</button>` : ''}
       ${espec!==GENERAL_KEY && variantNames.length>1 ? `<button class="btn btn-sm btn-danger" id="deleteVariantBtn">Delete variant</button>` : ''}
-    </div>` : `<span class="role-badge role-badge-viewer">Read-only</span>`}
+    </div>
   </div>
 
   <div class="variant-row" style="margin-top:14px;">
     ${variantTabs}
-    ${(officer && espec!==GENERAL_KEY) ? `<button class="btn btn-sm btn-ghost" id="addVariantBtn">+ Add variant</button>` : ''}
+    ${espec!==GENERAL_KEY ? `<button class="btn btn-sm btn-ghost" id="addVariantBtn">+ Add variant</button>` : ''}
   </div>
 
   <div class="table-wrap">
     <table class="metric-editor-table">
       <thead><tr>
-        ${officer ? `<th style="width:44px;"></th>` : ''}
+        <th style="width:44px;"></th>
         <th style="width:170px;">Metric</th>
         <th style="width:210px;">Source</th>
         <th style="width:110px;">Unit</th>
@@ -2008,12 +1868,12 @@ function renderBenchmarkMain(){
         <th style="width:150px;">Mode</th>
         <th style="width:70px;">Direction</th>
         <th style="width:64px;">S</th><th style="width:64px;">A</th><th style="width:64px;">B</th><th style="width:64px;">C</th><th style="width:64px;">D</th>
-        ${officer ? `<th style="width:36px;"></th>` : ''}
+        <th style="width:36px;"></th>
       </tr></thead>
-      <tbody id="metricRowsBody">${rows || `<tr><td colspan="${officer?13:11}" class="small-muted" style="padding:16px;">No metrics yet${officer?' — add one below.':' for this espec.'}</td></tr>`}</tbody>
+      <tbody id="metricRowsBody">${rows || `<tr><td colspan="13" class="small-muted" style="padding:16px;">No metrics yet — add one below.</td></tr>`}</tbody>
     </table>
   </div>
-  ${officer ? `<div style="margin-top:12px;"><button class="btn" id="addMetricBtn">+ Add metric</button></div>` : ''}
+  <div style="margin-top:12px;"><button class="btn" id="addMetricBtn">+ Add metric</button></div>
   <p class="legend-note">Direction "Higher is better" grades S as the highest bar to clear; "Lower is better" grades S as the lowest (best) number, e.g. Deaths/min. "Info only" metrics are tracked and shown but don't count toward Overall. Column order here also sets the column order shown on raid night grade tables.</p>
   `;
 }
@@ -2032,26 +1892,6 @@ function renderUnitCell(m){
 }
 
 function renderMetricRow(m, index, total){
-  if(!isOfficer()){
-    const nativeUnit = nativeUnitForSource(m.source);
-    const displayUnit = (nativeUnit==='per_second'||nativeUnit==='per_minute')
-      ? normalizeDisplayUnit(m.unit, nativeUnit)
-      : (unitForSource(m.source) || m.unit || '—');
-    return `
-    <tr data-metric-id="${escAttr(m.id)}">
-      <td>${esc(m.label)}</td>
-      <td class="small-muted">${esc(labelForSource(m.source))}</td>
-      <td class="small-muted">${esc(unitDisplayLabel(displayUnit))}</td>
-      <td>${m.weight}</td>
-      <td>${m.mode==='graded' ? 'Graded' : 'Info only'}</td>
-      <td>${m.dir==='higher' ? 'Higher ⬆' : 'Lower ⬇'}</td>
-      <td class="mono">${m.thresholds.S}</td>
-      <td class="mono">${m.thresholds.A}</td>
-      <td class="mono">${m.thresholds.B}</td>
-      <td class="mono">${m.thresholds.C}</td>
-      <td class="mono">${m.thresholds.D}</td>
-    </tr>`;
-  }
   return `
   <tr data-metric-id="${escAttr(m.id)}">
     <td><div class="row-reorder">
@@ -2077,7 +1917,6 @@ function renderMetricRow(m, index, total){
 }
 
 async function saveBenchState(){
-  if(!isOfficer()) return;
   await storeSet('benchmarks', benchPageCache.benchmarks);
 }
 
@@ -2095,7 +1934,6 @@ function wireBenchmarksPage(){
 
   const addVariantBtn = document.getElementById('addVariantBtn');
   if(addVariantBtn) addVariantBtn.addEventListener('click', async ()=>{
-    if(!isOfficer()) return;
     const name = prompt('Name this variant (e.g. "Heal SA", "Power DPS"):');
     if(!name) return;
     const key = name.trim().toLowerCase().replace(/\s+/g,'-')+'-'+uid().slice(0,4);
@@ -2107,7 +1945,6 @@ function wireBenchmarksPage(){
 
   const delVariantBtn = document.getElementById('deleteVariantBtn');
   if(delVariantBtn) delVariantBtn.addEventListener('click', ()=>{
-    if(!isOfficer()) return;
     confirmModal('Delete this variant?', 'All metric configuration for this variant will be lost.', async ()=>{
       const bench = benchPageCache.benchmarks[benchPageCache.espec];
       delete bench.variants[benchPageCache.variant];
@@ -2121,7 +1958,6 @@ function wireBenchmarksPage(){
 
   const setDefaultBtn = document.getElementById('setDefaultVariantBtn');
   if(setDefaultBtn) setDefaultBtn.addEventListener('click', async ()=>{
-    if(!isOfficer()) return;
     benchPageCache.benchmarks[benchPageCache.espec].activeVariant = benchPageCache.variant;
     await saveBenchState();
     refreshBenchMain();
@@ -2136,7 +1972,6 @@ function wireBenchmarksPage(){
 
   const addMetricBtn = document.getElementById('addMetricBtn');
   if(addMetricBtn) addMetricBtn.addEventListener('click', async ()=>{
-    if(!isOfficer()) return;
     const v = currentVariantObj();
     const defaultSource = 'builtin:damage';
     v.metrics.push({
@@ -2151,7 +1986,6 @@ function wireBenchmarksPage(){
 }
 
 function wireMetricRows(){
-  if(!isOfficer()) return; // read-only rows have no inputs/buttons to wire up
   const body = document.getElementById('metricRowsBody');
   if(!body) return;
   body.querySelectorAll('tr[data-metric-id]').forEach(tr=>{
@@ -2240,46 +2074,10 @@ function refreshBenchMain(){
    ========================================================================= */
 
 function wireUpPage(){
-  const logoutBtn = document.getElementById('logoutBtn');
-  if(logoutBtn) logoutBtn.addEventListener('click', logOut);
-  const manageAccessBtn = document.getElementById('manageAccessBtn');
-  if(manageAccessBtn) manageAccessBtn.addEventListener('click', openManageAccessModal);
-
   const r = state.route;
   if(r.page === 'upload') wireUploadPage();
   else if(r.page === 'raid') wireRaidPage();
   else if(r.page === 'benchmarks') wireBenchmarksPage();
-}
-
-function openManageAccessModal(){
-  const wrap = document.createElement('div');
-  wrap.className = 'modal-backdrop';
-  wrap.innerHTML = `<div class="modal" style="max-width:380px;">
-    <h3>Manage access</h3>
-    <p>Leave a field blank to keep its current passphrase unchanged.</p>
-    <div class="field" style="margin-bottom:12px;"><label>New viewer passphrase</label><input type="password" id="maViewer" autocomplete="new-password"></div>
-    <div class="field" style="margin-bottom:4px;"><label>New officer passphrase</label><input type="password" id="maOfficer" autocomplete="new-password"></div>
-    <div id="maError" class="auth-error" style="display:none;margin-top:10px;"></div>
-    <div class="modal-actions" style="margin-top:14px;"><button class="btn" id="maCancel">Cancel</button><button class="btn btn-primary" id="maSave">Save</button></div>
-  </div>`;
-  document.body.appendChild(wrap);
-  wrap.addEventListener('click', e=>{ if(e.target===wrap) wrap.remove(); });
-  wrap.querySelector('#maCancel').addEventListener('click', ()=> wrap.remove());
-  wrap.querySelector('#maSave').addEventListener('click', async ()=>{
-    const newViewer = wrap.querySelector('#maViewer').value;
-    const newOfficer = wrap.querySelector('#maOfficer').value;
-    if(newViewer && newOfficer && newViewer === newOfficer){
-      const err = wrap.querySelector('#maError');
-      err.textContent = 'Use two different passphrases.'; err.style.display='block';
-      return;
-    }
-    const config = await getAuthConfig();
-    if(newViewer) config.viewerHash = await sha256Hex(newViewer);
-    if(newOfficer) config.officerHash = await sha256Hex(newOfficer);
-    await storeSet('auth-config', config);
-    wrap.remove();
-    toast('Passphrases updated.');
-  });
 }
 
 /* =========================================================================
@@ -2288,12 +2086,7 @@ function openManageAccessModal(){
 
 state.route = parseHash();
 render();
+document.getElementById('yr').textContent = new Date().getFullYear();
 </script>
 </body>
-
-<footer>
-  &copy; <span id="yr"></span>
-  <!-- footer site name -->
-  Eternal Infamy [Fate] Kiz
-</footer>
 </html>
